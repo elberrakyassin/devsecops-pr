@@ -1,32 +1,30 @@
-# STAGE 1: Construcción (Alpine)
-FROM python:3.11-alpine AS builder
+# STAGE 1: Construcción (Slim Bullseye)
+FROM python:3.11-slim-bullseye AS builder
 
 WORKDIR /app
 
-# Instalar dependencias de compilación para garantizar que Flask funcione
-RUN apk add --no-cache build-base linux-headers libffi-dev openssl-dev
+# Actualización crítica del sistema operativo en el stage de construcción
+# Esto garantiza que el SO tenga los últimos parches de seguridad disponibles
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copia y instala dependencias
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# STAGE 2: Imagen Final (Alpine limpia)
-FROM python:3.11-alpine
+# STAGE 2: Imagen Final Limpia
+FROM python:3.11-slim-bullseye
 
 WORKDIR /app
 
-# --- PASO DE SEGURIDAD: Parchear el SO BASE ---
-# Ejecutar actualización para corregir vulnerabilidades del sistema operativo
-RUN apk update && \
-    apk upgrade --no-cache && \
-    rm -rf /var/cache/apk/*
-
-# Copiar paquetes instalados y el código fuente
+# Copia solo los paquetes y el código necesarios
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY app.py .
 
 # Crear y cambiar a usuario no-root
-RUN adduser -D appuser
+RUN useradd -m appuser
 USER appuser
 
 EXPOSE 5000

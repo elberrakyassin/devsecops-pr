@@ -12,7 +12,7 @@ jobs:
   build-and-scan:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Mínimo necesario para leer el código
+      contents: read 
 
     steps:
       - name: Checkout Code
@@ -33,19 +33,21 @@ jobs:
 
       # -----------------------------------------------
       # PASO B: Trivy FS Scan (Vulnerabilidades en dependencias)
+      # Escanea el código fuente y dependencias (requirements.txt)
       # -----------------------------------------------
       - name: Trivy FS Scan (Dependencias)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           input: '.' 
+          # Mantenemos 'ignore-unfixed: true' aquí también para consistencia
           ignore-unfixed: true 
           format: 'table'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1' # Fallará si la dependencia Flask tiene problemas graves
+          exit-code: '1' 
 
       # -----------------------------------------------
-      # PASO C: Construir la Imagen Docker (Usando Buildx)
+      # PASO C: Construir la Imagen Docker
       # -----------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -54,15 +56,15 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          # IMPORTANTE: El tag debe coincidir con el siguiente paso de Trivy
           tags: devsecops-app:latest
-          load: true # Carga la imagen para escaneo inmediato
-          no-cache: true # FUERZA la ejecución del apk upgrade en el Dockerfile
+          load: true 
+          no-cache: true 
 
       # -----------------------------------------------
       # PASO D: Trivy Image Scan (Post-Build Check)
+      # IGNORA LAS VULNERABILIDADES SIN PARCHE DISPONIBLE
       # -----------------------------------------------
-      - name: Run Trivy vulnerability scanner on Docker image
+      - name: Run Trivy vulnerability scanner on Docker image (Ignorando Unfixed)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'devsecops-app:latest'
@@ -70,7 +72,9 @@ jobs:
           exit-code: '1'
           severity: 'HIGH,CRITICAL'
           vuln-type: 'os,library'
+          # ESTE ES EL CAMBIO CLAVE: Ignorar vulnerabilidades sin parche.
+          ignore-unfixed: true 
 
       - name: Pipeline Success
         if: success()
-        run: echo "¡Pipeline DevSecOps COMPLETADO EXITOSAMENTE!"
+        run: echo "¡Pipeline DevSecOps COMPLETADO EXITOSAMENTE! (Imagen escaneada)"

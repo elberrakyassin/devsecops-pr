@@ -1,0 +1,76 @@
+name: DevSecOps CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Mínimo necesario para leer el código
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      # -----------------------------------------------
+      # PASO A: Gitleaks Scan (Pre-commit check)
+      # -----------------------------------------------
+      - name: Run Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          report: gitleaks-results.json
+          exit-code: 1
+
+      # -----------------------------------------------
+      # PASO B: Trivy FS Scan (Vulnerabilidades en dependencias)
+      # -----------------------------------------------
+      - name: Trivy FS Scan (Dependencias)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          input: '.' 
+          ignore-unfixed: true 
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1' # Fallará si la dependencia Flask tiene problemas graves
+
+      # -----------------------------------------------
+      # PASO C: Construir la Imagen Docker (Usando Buildx)
+      # -----------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image (Force no-cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # IMPORTANTE: El tag debe coincidir con el siguiente paso de Trivy
+          tags: devsecops-app:latest
+          load: true # Carga la imagen para escaneo inmediato
+          no-cache: true # FUERZA la ejecución del apk upgrade en el Dockerfile
+
+      # -----------------------------------------------
+      # PASO D: Trivy Image Scan (Post-Build Check)
+      # -----------------------------------------------
+      - name: Run Trivy vulnerability scanner on Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'devsecops-app:latest'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
+
+      - name: Pipeline Success
+        if: success()
+        run: echo "¡Pipeline DevSecOps COMPLETADO EXITOSAMENTE!"
